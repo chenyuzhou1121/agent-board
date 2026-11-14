@@ -1,0 +1,38 @@
+{
+  "database": "~/.agent-board/board.db",
+  "monitorUrl": "https://monitor.example.com/api/stats",
+  "machines": {
+    "compute-a": {
+      "gpus": [0, 1],
+      "monitorName": "compute-a",
+      "directUrl": "https://compute-a.example.com/api/stats",
+      "approval": false
+    },
+    "compute-b": {
+      "gpus": null,
+      "approval": true
+    }
+  },
+  "watch": {
+    "compute-a:0": {
+      "hotCelsius": 85,
+      "note": "Reduce load if cooling cannot keep up."
+    }
+  },
+  "sessions": {
+    "claudeDirectories": ["/path/to/claude-config"],
+    "codexDirectories": ["/path/to/codex-home"],
+    "codexBinary": "codex",
+    "recentMinutes": 30,
+    "lookbackDays": 14,
+    "queueHours": 24
+  },
+  "heat": {
+    "minimumGapMinutes": 3,
+    "maximumGapMinutes": 15,
+    "cooldownMinutes": 60
+  },
+  "web": {
+    "port": 8790
+  }
+}

@@ -1,0 +1,295 @@
+<!doctype html>
+<!-- Display resource registrations, session messages and user approval controls. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Board</title>
+<style>
+:root { color-scheme: light dark; --bg: #f5f7fa; --panel: #fff; --text: #202936; --muted: #64748b; --line: #dce2ea; --accent: #2563eb; --warn: #9a3412; --good: #15803d; }
+@media (prefers-color-scheme: dark) { :root { --bg: #141820; --panel: #1d2530; --text: #e2e8f0; --muted: #a0aec0; --line: #364152; --accent: #93b4ff; --warn: #fdba74; --good: #86efac; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
+header { padding: 16px 24px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+main { max-width: 1440px; margin: auto; padding: 20px; }
+section { margin-bottom: 20px; }
+.panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; }
+.columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .columns { grid-template-columns: 1fr; } main { padding: 12px; } }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.grow { flex: 1; }
+.muted, small { color: var(--muted); }
+.warning { color: var(--warn); }
+.good { color: var(--good); }
+.mono { font-family: ui-monospace, monospace; }
+.item { padding: 10px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0; }
+.unread { border-left: 3px solid var(--accent); padding-left: 10px; }
+.badge { border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 12px; }
+.scroll { max-height: 560px; overflow: auto; }
+input, textarea, button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; }
+input[type="checkbox"] { accent-color: var(--accent); }
+input[type="text"], textarea { width: 100%; }
+textarea { min-height: 140px; resize: vertical; margin: 8px 0; }
+button { cursor: pointer; }
+button:hover, button.active { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: .5; cursor: wait; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { color: var(--muted); font-weight: 500; }
+progress { width: 100%; height: 8px; accent-color: var(--accent); }
+#notice { position: fixed; bottom: 16px; right: 16px; max-width: min(480px, 90vw); background: var(--text); color: var(--panel); padding: 12px; border-radius: 8px; white-space: pre-wrap; z-index: 10; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Board</h1>
+  <span id="updated" class="muted">Loading...</span>
+  <span id="monitor" class="muted"></span>
+  <span class="grow"></span>
+  <label><input type="checkbox" id="auto" checked> Refresh every 20 seconds</label>
+  <button id="refresh">Refresh</button>
+</header>
+<main>
+  <section>
+    <h2>Resources</h2>
+    <p class="muted">Registrations are advisory. Check actual usage and coordinate with other holders before starting work.</p>
+    <div id="cards" class="cards"></div>
+  </section>
+  <section class="columns">
+    <div class="panel">
+      <h2>User inbox <span id="unread"></span></h2>
+      <div id="inbox" class="scroll"></div>
+      <h2 style="margin-top:20px">Approval requests</h2>
+      <div id="asks"></div>
+    </div>
+    <div class="panel" id="composer">
+      <h2>Send as user</h2>
+      <label for="to">Recipient: handle, session name, @machine, or all</label>
+      <input id="to" type="text" list="handles" autocomplete="off">
+      <datalist id="handles"></datalist>
+      <label for="body">Message</label>
+      <textarea id="body" placeholder="Compose a message for a session or the user inbox."></textarea>
+      <div class="row">
+        <label><input id="quiet" type="checkbox"> Store without pushing</label>
+        <label><input id="push" type="checkbox"> Push broadcast</label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <small id="replyhint"></small><span class="grow"></span><button id="send">Send</button>
+      </div>
+      <p class="muted">Ctrl/Command+Enter sends. Routine updates can be stored for the recipient's next inbox check.</p>
+    </div>
+  </section>
+  <section class="panel">
+    <nav class="tabs" aria-label="Board views">
+      <button data-tab="messages" class="active">Messages</button>
+      <button data-tab="sessions">Sessions</button>
+      <button data-tab="notes">Notes</button>
+      <button data-tab="history">Claim history</button>
+      <button data-tab="events">Events</button>
+    </nav>
+    <div id="view-messages">
+      <div class="row" style="margin-bottom:12px">
+        <input id="filter" type="text" placeholder="Filter by handle or message" aria-label="Filter messages">
+        <label><input id="onlyunread" type="checkbox"> Unread only</label>
+        <label><input id="hideboard" type="checkbox"> Hide automated messages</label>
+      </div>
+      <div id="messages" class="scroll"></div>
+    </div>
+    <div id="view-sessions" class="scroll" hidden></div>
+    <div id="view-notes" class="scroll" hidden></div>
+    <div id="view-history" class="scroll" hidden></div>
+    <div id="view-events" class="scroll" hidden></div>
+  </section>
+</main>
+<div id="notice" role="status" hidden></div>
+<script nonce="__SCRIPT_NONCE__">
+// web.mjs injects the token and script nonce separately for each server instance.
+const token = '__BOARD_TOKEN__';
+const $ = selector => document.querySelector(selector);
+const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const time = value => value ? new Date(value).toLocaleString('en-GB', { hour12: false }) : 'unspecified';
+const empty = text => `<p class="muted">${escape(text)}</p>`;
+let state = null, replyTo = null, loading = false;
+
+/** Show transient status text without inserting it as HTML. */
+function notice(text) {
+  $('#notice').textContent = text;
+  $('#notice').hidden = false;
+  clearTimeout(notice.timer);
+  notice.timer = setTimeout(() => { $('#notice').hidden = true; }, 5000);
+}
+/** POST a JSON object to a local route; return its JSON result or throw its error. */
+async function api(route, body) {
+  const response = await fetch(route, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-board-token': token },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || response.statusText);
+  return result;
+}
+/** Return escaped markup for a message, using the current snapshot's unread state. */
+function messageHtml(message) {
+  const unread = message.recipient === 'user' ? state.userUnread.includes(message.id) : message.recipient !== 'all' && !message.read;
+  return `<div class="item${unread ? ' unread' : ''}"><div class="row">
+    <small>#${message.id} ${escape(time(message.ts))}</small><b>${escape(message.sender)}</b><span>-&gt;</span><b>${escape(message.recipient)}</b>
+    <span class="grow"></span>${message.sender !== 'user' && message.sender !== 'board' ? `<button data-to="${escape(message.sender)}" data-reply="${message.id}">Reply</button>` : ''}
+    ${message.recipient === 'user' && unread ? `<button data-read="${message.id}">Mark read</button>` : ''}
+    </div><div class="body">${escape(message.body)}</div><small>${escape(message.delivery)}${message.read ? ' | read' : ''}</small></div>`;
+}
+function renderCards() {
+  $('#cards').innerHTML = state.cards.length ? state.cards.map(card => {
+    const gpu = card.live;
+    const usage = gpu ? `<div class="muted">GPU ${escape(gpu.util)}% | ${(gpu.used / 1024).toFixed(1)}/${(gpu.total / 1024).toFixed(1)} GiB | ${escape(gpu.temp ?? '?')} C</div>
+      <progress max="100" value="${Math.max(0, Math.min(100, gpu.util))}" aria-label="GPU utilization"></progress>` : empty('No monitor reading');
+    const watch = card.watch ? `<p class="${gpu && gpu.temp >= card.watch.hotCelsius ? 'warning' : 'muted'}">Watch at ${escape(card.watch.hotCelsius)} C: ${escape(card.watch.note)}</p>` : '';
+    const claims = card.claims.map(claim => `<div class="item"><div class="row"><small>#${claim.id}</small><b>${escape(claim.handle)}</b><span class="grow"></span><button data-to="${escape(claim.handle)}">Message</button></div>
+      <small>${escape(claim.target)} | until ${escape(time(claim.until))}${claim.share ? ' | sharing allowed' : ''}${claim.mem ? ' | <= ' + escape(claim.mem) : ''}</small>
+      ${claim.until && claim.until < Date.now() ? '<div class="warning">Past estimated end time</div>' : ''}<div class="body">${escape(claim.note)}</div></div>`).join('');
+    const wants = card.wants.map(want => `<div class="item"><b>Waiting: ${escape(want.handle)}</b><small> for ${escape(want.targets.join(', '))}</small><div class="body">${escape(want.note)}</div></div>`).join('');
+    return `<div class="card"><h2 class="mono">${escape(card.target)}</h2>${card.approval ? '<p class="warning">User approval required</p>' : ''}${usage}${watch}${gpu && gpu.used > 4096 && !card.claims.length ? '<p class="warning">GPU memory in use without a registration</p>' : ''}${claims || empty('No registrations')}${wants}</div>`;
+  }).join('') : empty('No machines or registrations. Set machines in your configuration or create a claim.');
+}
+function renderRequests() {
+  // Preserve draft decision notes when periodic refresh rebuilds request controls.
+  const notes = new Map([...document.querySelectorAll('[data-note]')].map(input => [input.dataset.note, input.value]));
+  const focused = document.activeElement?.dataset?.note;
+  const pending = state.asks.filter(request => request.status === 'pending');
+  $('#asks').innerHTML = pending.length ? pending.map(request => `<div class="item"><div class="row"><small>#${request.id}</small><b>${escape(request.handle)} -&gt; ${escape(request.host)}</b></div>
+    <div class="body">${escape(request.body)}</div><input type="text" data-note="${request.id}" placeholder="Optional decision note" aria-label="Decision note for request ${request.id}">
+    <div class="row" style="margin-top:8px"><button data-decide="approved" data-id="${request.id}">Approve</button><button data-decide="denied" data-id="${request.id}">Deny</button></div></div>`).join('') : empty('No pending requests');
+  const decided = state.asks.filter(request => request.status !== 'pending').slice(0, 5);
+  if (decided.length) $('#asks').innerHTML += `<p class="muted">Recent decisions: ${decided.map(request => `#${request.id} ${escape(request.handle)}: ${escape(request.status)}`).join('; ')}</p>`;
+  document.querySelectorAll('[data-note]').forEach(input => {
+    input.value = notes.get(input.dataset.note) || '';
+    if (input.dataset.note === focused) input.focus();
+  });
+}
+function renderMessages() {
+  const filter = $('#filter').value.toLowerCase().trim();
+  const messages = state.messages.filter(message => (!filter || `${message.sender} ${message.recipient} ${message.body}`.toLowerCase().includes(filter))
+    && (!$('#hideboard').checked || message.sender !== 'board')
+    && (!$('#onlyunread').checked || (message.recipient === 'user' ? state.userUnread.includes(message.id) : message.recipient !== 'all' && !message.read)));
+  $('#messages').innerHTML = messages.length ? messages.map(messageHtml).join('') : empty('No matching messages');
+}
+/** Build a table from trusted headers and rows of already escaped cell markup. */
+function table(headers, rows) {
+  return `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function render() {
+  $('#updated').textContent = 'Updated ' + time(state.now);
+  $('#monitor').textContent = state.monitor ? 'Monitor available' : 'Monitor unavailable or unconfigured';
+  $('#handles').innerHTML = [...new Set([...state.handles, 'all', ...state.cards.map(card => '@' + card.target.split(':')[0])])].map(handle => `<option value="${escape(handle)}"></option>`).join('');
+  renderCards();
+  renderRequests();
+  renderMessages();
+  $('#unread').textContent = state.userUnread.length ? `(${state.userUnread.length} unread)` : '';
+  const inbox = state.messages.filter(message => message.recipient === 'user' || message.sender === 'user').slice(0, 50);
+  $('#inbox').innerHTML = `${state.userUnread.length ? '<button id="readall">Mark all read</button>' : ''}${inbox.length ? inbox.map(messageHtml).join('') : empty('No messages yet')}`;
+  $('#view-sessions').innerHTML = table(['Handle', 'Runtime', 'Session', 'Status', 'Directory'],
+    state.sessions.map(session => [
+      escape(session.handle), escape(session.runtime), escape(session.name),
+      escape(session.status) + (session.turn ? ' | push available' : ' | inbox or queue'),
+      escape(session.cwd),
+    ]));
+  $('#view-notes').innerHTML = state.agents.filter(agent => agent.note)
+    .map(agent => `<div class="item"><b>${escape(agent.handle)}</b><div class="body">${escape(agent.note)}</div></div>`)
+    .join('') || empty('No notes');
+  $('#view-history').innerHTML = table(['ID', 'Target', 'Holder', 'Start', 'End', 'Note'],
+    state.history.map(claim => [
+      claim.id, escape(claim.target), escape(claim.handle), escape(time(claim.since)),
+      claim.ended_at ? escape(time(claim.ended_at)) : 'Active', escape(claim.note),
+    ]));
+  $('#view-events').innerHTML = table(['Time', 'Handle', 'Event'],
+    state.events.map(event => [escape(time(event.ts)), escape(event.handle), escape(event.text)]));
+  document.title = (state.userUnread.length ? `(${state.userUnread.length}) ` : '') + 'Agent Board';
+}
+/** Fetch and render a snapshot, skipping refresh while another load is pending. */
+async function load() {
+  if (loading) return;
+  loading = true;
+  try {
+    const response = await fetch('/api/snapshot', { cache: 'no-store' });
+    if (!response.ok) throw new Error(response.statusText);
+    state = await response.json();
+    render();
+  } catch (error) {
+    $('#updated').textContent = 'Load failed: ' + error.message;
+  } finally {
+    loading = false;
+  }
+}
+/** Send the composer fields as user, optionally marking the replied-to message read. */
+async function send() {
+  const to = $('#to').value.trim(), body = $('#body').value.trim();
+  if (!to || !body) return notice('Recipient and message are required');
+  if ($('#send').disabled) return;
+  $('#send').disabled = true;
+  try {
+    const result = await api('/api/send', { to, body, quiet: $('#quiet').checked, push: $('#push').checked, replyTo });
+    notice(result.lines.join('\n'));
+    $('#body').value = '';
+    replyTo = null;
+    $('#replyhint').textContent = '';
+    await load();
+  } catch (error) {
+    notice('Send failed: ' + error.message);
+  } finally {
+    $('#send').disabled = false;
+  }
+}
+// Delegate events because rendering replaces the buttons for messages and requests.
+document.addEventListener('click', async event => {
+  const button = event.target.closest('button');
+  if (!button || button.disabled) return;
+  if (button.dataset.tab) {
+    document.querySelectorAll('[data-tab]').forEach(tab => {
+      tab.classList.toggle('active', tab === button);
+      $('#view-' + tab.dataset.tab).hidden = tab !== button;
+    });
+    return;
+  }
+  if (button.dataset.to) {
+    $('#to').value = button.dataset.to;
+    replyTo = button.dataset.reply ? Number(button.dataset.reply) : null;
+    $('#replyhint').textContent = replyTo ? `Replying to #${replyTo}` : '';
+    $('#composer').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#body').focus();
+    return;
+  }
+  if (!button.dataset.read && button.id !== 'readall' && !button.dataset.decide) return;
+  button.disabled = true;
+  try {
+    if (button.dataset.decide) {
+      const id = Number(button.dataset.id), note = document.querySelector(`[data-note="${id}"]`).value;
+      notice((await api('/api/decide', { id, status: button.dataset.decide, note })).line);
+    } else await api('/api/read', { ids: button.dataset.read ? [Number(button.dataset.read)] : state.userUnread });
+    await load();
+  } catch (error) {
+    notice(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+$('#send').onclick = send;
+$('#refresh').onclick = load;
+$('#body').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    send();
+  }
+});
+for (const selector of ['#filter', '#onlyunread', '#hideboard']) $(selector).addEventListener('input', () => state && renderMessages());
+setInterval(() => { if ($('#auto').checked && document.visibilityState === 'visible') load(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
+load();
+</script>
+</body>
+</html>

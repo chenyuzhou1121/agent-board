@@ -1,0 +1,13 @@
+# Keep local configuration, database state and generated logs out of version control.
+.env
+.env.*
+config.json
+config.local.json
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+.DS_Store
